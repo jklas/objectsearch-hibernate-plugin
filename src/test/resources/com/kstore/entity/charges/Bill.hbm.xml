@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<!DOCTYPE hibernate-mapping PUBLIC
+	"-//Hibernate/Hibernate Mapping DTD 3.0//EN"
+	"http://hibernate.sourceforge.net/hibernate-mapping-3.0.dtd">
+<hibernate-mapping package="com.kstore.entity.charges">
+  <class name="Bill">
+  	<id name="id" access="field">
+  		<generator class="sequence"/>
+  	</id>
+  	<set name="charges">
+  		<key column="CHARGE_ID"/>
+  		<one-to-many class="com.kstore.entity.charges.Charge"/>
+  	</set>
+  	
+  	<one-to-one name="customer" class="com.kstore.entity.customer.Customer"/>
+  </class>
+</hibernate-mapping>

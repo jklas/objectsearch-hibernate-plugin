@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<!DOCTYPE hibernate-mapping PUBLIC "-//Hibernate/Hibernate Mapping DTD 3.0//EN"
+                                   "http://hibernate.sourceforge.net/hibernate-mapping-3.0.dtd">
+<hibernate-mapping package="com.kstore.entity.customer">
+	<class name="Customer">
+
+		<id column="CUST_ID" name="id" type="long" access="field">
+			<generator class="sequence" />
+		</id>
+
+		<property name="email" column="EMAIL" access="field" />
+		
+		<property column="FIRST_NAME" name="firstName" type="string"
+			access="field" />
+
+
+		<property name="lastName" column="LAST_NAME" access="field" />
+
+		<many-to-one name="site" column="SITE_ID"
+			class="com.kstore.entity.site.Site" access="field" />
+
+		<property name="password" column="PASSWORD" length="16" type="string" />
+
+	</class>
+</hibernate-mapping>

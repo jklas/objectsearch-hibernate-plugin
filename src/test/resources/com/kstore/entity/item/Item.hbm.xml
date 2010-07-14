@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<!DOCTYPE hibernate-mapping PUBLIC
+	"-//Hibernate/Hibernate Mapping DTD 3.0//EN"
+	"http://hibernate.sourceforge.net/hibernate-mapping-3.0.dtd">
+<hibernate-mapping package="com.kstore.entity.item">
+
+  <class name="Item" table="ITEM">
+  
+  	<id column="ITEM_ID" name="id" type="long">
+  		<generator class="sequence"/>
+  	</id>
+      
+   <many-to-one name="site" class="com.kstore.entity.site.Site" column="SITE_ID"/>
+   
+   <many-to-one name="category" class="com.kstore.entity.category.Category" column="CATEG_ID"/>
+   
+   <property name="price" column="PRICE"/>
+   
+   <property name="title" column="TITLE"/>
+   
+   <property name="description" column="DESCRIPTION"/>
+   
+   <many-to-one name="seller" class="com.kstore.entity.customer.Customer" column="SELLER_ID"/>
+    
+   <set name="charges" table="CHARGES" inverse="true">
+		<key column="CHARGE_ID"/>
+		<one-to-many class="com.kstore.entity.charges.Charge"/>   		
+   </set>
+
+   <set name="bids" inverse="true" access="field">
+   		<key column="BID_ID"/>
+   		<one-to-many class="com.kstore.entity.bids.Bid"/>   		
+   </set>
+  
+  </class>
+</hibernate-mapping>
