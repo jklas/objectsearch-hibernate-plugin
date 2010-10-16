@@ -1,6 +1,7 @@
 package com.jklas.search;
 
 
+import java.util.Collection;
 import java.util.List;
 
 import junit.framework.Assert;
@@ -17,7 +18,9 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import com.jklas.search.engine.Search;
 import com.jklas.search.engine.VectorSearch;
+import com.jklas.search.engine.dto.ObjectResult;
 import com.jklas.search.engine.dto.VectorRankedResult;
 import com.jklas.search.exception.SearchEngineMappingException;
 import com.jklas.search.index.IndexId;
@@ -30,6 +33,7 @@ import com.jklas.search.interceptors.SearchInterceptor;
 import com.jklas.search.interceptors.hibernate.HibernateEventInterceptor;
 import com.jklas.search.query.vectorial.VectorQuery;
 import com.jklas.search.query.vectorial.VectorQueryParser;
+import com.jklas.search.templates.hibernate.HibernatePluginTemplate;
 import com.jklas.search.util.Utils;
 import com.kstore.entity.customer.Customer;
 import com.kstore.entity.item.Item;
@@ -96,7 +100,49 @@ public class HibernateHydrateTest {
 		Object hydrated = session.load(search.get(0).getKey().getClazz(), search.get(0).getKey().getId());
 		
 		Assert.assertEquals(julian, hydrated);
-		
-		
 	}
+	
+	@Test
+	public void ObjectIsHydratedByTemplate() {
+		Site argentina = new Site("AR");
+		session.save(argentina);
+		Customer julian = new Customer(argentina,"Julian","Klas","jklas@fi.uba.ar","654321");
+		session.save(julian);
+		session.flush();
+
+		VectorQuery query = new VectorQueryParser("julian").getQuery(new IndexId("AR"));
+		Search search = new VectorSearch(query, MemoryIndexReaderFactory.getInstance());
+		
+		Collection<? extends ObjectResult> searchResults = search.search();
+		
+		HibernatePluginTemplate template = new HibernatePluginTemplate();
+		
+		Collection<?> hydratedResults = template.hydrateAll(session, searchResults);
+			
+		
+		Assert.assertEquals(1, hydratedResults.size());
+		Assert.assertEquals(julian, hydratedResults.iterator().next());
+	}
+
+	@Test
+	public void ObjectIsHydratedByGenericTemplate() {
+		Site argentina = new Site("AR");
+		session.save(argentina);
+		Customer julian = new Customer(argentina,"Julian","Klas","jklas@fi.uba.ar","654321");
+		session.save(julian);
+		session.flush();
+
+		VectorQuery query = new VectorQueryParser("julian").getQuery(new IndexId("AR"));
+		Search search = new VectorSearch(query, MemoryIndexReaderFactory.getInstance());
+		
+		Collection<? extends ObjectResult> searchResults = search.search();
+		
+		HibernatePluginTemplate template = new HibernatePluginTemplate();
+		
+		Collection<Customer> hydratedResults = template.hydrateAll(session, searchResults, Customer.class);
+					
+		Assert.assertEquals(1, hydratedResults.size());
+		Assert.assertEquals(julian, hydratedResults.iterator().next());
+	}
+	
 }
