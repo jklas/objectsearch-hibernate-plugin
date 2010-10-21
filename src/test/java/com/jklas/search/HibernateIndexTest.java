@@ -1,8 +1,27 @@
+/**
+ * Object Search Framework
+ *
+ * Copyright (C) 2010 Julian Klas
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
 package com.jklas.search;
 
 
-import java.util.Iterator;
-import java.util.Map.Entry;
+import java.util.Collection;
+import java.util.List;
 
 import junit.framework.Assert;
 
@@ -18,24 +37,28 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import com.jklas.search.engine.Search;
+import com.jklas.search.engine.VectorSearch;
+import com.jklas.search.engine.dto.ObjectResult;
+import com.jklas.search.engine.dto.VectorRankedResult;
 import com.jklas.search.exception.SearchEngineMappingException;
 import com.jklas.search.index.IndexId;
-import com.jklas.search.index.ObjectKey;
-import com.jklas.search.index.PostingList;
-import com.jklas.search.index.PostingMetadata;
-import com.jklas.search.index.Term;
 import com.jklas.search.index.memory.MemoryIndex;
+import com.jklas.search.index.memory.MemoryIndexReaderFactory;
 import com.jklas.search.index.memory.MemoryIndexWriterFactory;
 import com.jklas.search.indexer.DefaultIndexerService;
 import com.jklas.search.indexer.pipeline.DefaultIndexingPipeline;
 import com.jklas.search.interceptors.SearchInterceptor;
 import com.jklas.search.interceptors.hibernate.HibernateEventInterceptor;
+import com.jklas.search.query.vectorial.VectorQuery;
+import com.jklas.search.query.vectorial.VectorQueryParser;
+import com.jklas.search.templates.hibernate.HibernatePluginTemplate;
 import com.jklas.search.util.Utils;
 import com.kstore.entity.customer.Customer;
 import com.kstore.entity.item.Item;
 import com.kstore.entity.site.Site;
 
-public class HibernateIndexTest {
+public class HibernateHydrateTest {
 
 	private static SessionFactory sessionFactory;
 
@@ -64,182 +87,81 @@ public class HibernateIndexTest {
 	}
 
 	@Before
-	public void Setup() {
+	public void Setup(){
 		session = sessionFactory.openSession();		
 		session.beginTransaction();
 		session.setFlushMode(FlushMode.ALWAYS);
 	}
 
 	@After
-	public void Cleanup() {
+	public void Cleanup(){
 		MemoryIndex.renewAllIndexes();
 		session.getTransaction().rollback();
 		session.getTransaction().begin();
 	}
 
 	@Test
-	public void EntityIsIndexedWithSelectedIndex() {
+	public void ObjectIsHydrated() {
 		Site argentina = new Site("AR");
-
 		session.save(argentina);
-
-		Customer julian = new Customer(argentina,"Julián","Klas","jklas@fi.uba.ar","654321");
-
+		Customer julian = new Customer(argentina,"Julian","Klas","jklas@fi.uba.ar","654321");
 		session.save(julian);
-
 		session.flush();
 
+		VectorQuery query = new VectorQueryParser("julian").getQuery(new IndexId("AR"));
+		List<VectorRankedResult> search = new VectorSearch(query, MemoryIndexReaderFactory.getInstance()).search();
+		
+		Assert.assertEquals(1, search.size());
+		
 		Assert.assertEquals(0, MemoryIndex.getDefaultIndex().getObjectCount());
 		Assert.assertEquals(1, MemoryIndex.getIndex(new IndexId("AR")).getObjectCount());
-	}
-
-	@Test
-	public void InsertIsIdempotent() {
-		Site argentina = new Site("AR");
-		session.save(argentina);
-		Customer julian = new Customer(argentina,"Julián","Klas","jklas@fi.uba.ar","654321");
-		session.save(julian);
-		session.save(julian);
-		session.flush();
-
-		Assert.assertEquals(0, MemoryIndex.getDefaultIndex().getObjectCount());
-		Assert.assertEquals(1, MemoryIndex.getIndex(new IndexId("AR")).getObjectCount());
-	}
-
-
-	@Test
-	public void EntitiesAreUpdated() throws SecurityException, NoSuchFieldException {
-		Site argentina = new Site("AR");
-		session.save(argentina);
-
-		Customer julian = new Customer(argentina,"Julián","Klas","jklas@fi.uba.ar","654321");
-		session.save(julian);
-
-		session.flush();
-
-		Assert.assertEquals(0, MemoryIndex.getDefaultIndex().getObjectCount());
-
-		MemoryIndex index = MemoryIndex.getIndex(new IndexId("AR"));
-		Assert.assertEquals(1, index.getObjectCount());
-		PostingList postingList = index.getPostingList(new Term("KLAS"));
-		Assert.assertEquals("jklas@fi.uba.ar", postingList.iterator().next().getValue().
-				getStoredFieldValue(Customer.class.getDeclaredField("email")));
-
-		julian = (Customer)session.get(Customer.class, julian.getId()); 
-
-		julian.setEmail("jklas@otherserver.com");
-		session.update(julian);
-
-		session.flush();
-
-		Assert.assertEquals(0, MemoryIndex.getDefaultIndex().getObjectCount());		
-		index = MemoryIndex.getIndex(new IndexId("AR"));
-		Assert.assertEquals(1, index.getObjectCount());
-		postingList = index.getPostingList(new Term("KLAS"));
-		Iterator<Entry<ObjectKey,PostingMetadata>> iterator = postingList.iterator();
-
-		Assert.assertEquals("jklas@otherserver.com", iterator.next().getValue().
-				getStoredFieldValue(Customer.class.getDeclaredField("email")));
-	}
-
-	@Test
-	public void EntitiesDeleted() throws SecurityException, NoSuchFieldException {
-		Site argentina = new Site("AR");
-		session.save(argentina);
-
-		Customer julian = new Customer(argentina,"Julián","Klas","jklas@fi.uba.ar","654321");
-		session.save(julian);
-
-		session.flush();
-
-		Assert.assertEquals(0, MemoryIndex.getDefaultIndex().getObjectCount());
-
-		MemoryIndex index = MemoryIndex.getIndex(new IndexId("AR"));
-		Assert.assertEquals(1, index.getObjectCount());
-		PostingList postingList = index.getPostingList(new Term("KLAS"));
-		Assert.assertEquals("jklas@fi.uba.ar", postingList.iterator().next().getValue().
-				getStoredFieldValue(Customer.class.getDeclaredField("email")));
-
-		julian = (Customer)session.get(Customer.class, julian.getId()); 
-
-		session.delete(julian);
-
-		session.flush();
-
-		Assert.assertEquals(0, MemoryIndex.getDefaultIndex().getObjectCount());		
-		index = MemoryIndex.getIndex(new IndexId("AR"));
-		Assert.assertEquals(0, index.getObjectCount());
+		
+		Object hydrated = session.load(search.get(0).getKey().getClazz(), search.get(0).getKey().getId());
+		
+		Assert.assertEquals(julian, hydrated);
 	}
 	
 	@Test
-	public void DeletesAreIdempotent() throws SecurityException, NoSuchFieldException {
+	public void ObjectIsHydratedByTemplate() {
 		Site argentina = new Site("AR");
 		session.save(argentina);
-
-		Customer julian = new Customer(argentina,"Julián","Klas","jklas@fi.uba.ar","654321");
+		Customer julian = new Customer(argentina,"Julian","Klas","jklas@fi.uba.ar","654321");
 		session.save(julian);
-
 		session.flush();
 
-		Assert.assertEquals(0, MemoryIndex.getDefaultIndex().getObjectCount());
-
-		MemoryIndex index = MemoryIndex.getIndex(new IndexId("AR"));
-		Assert.assertEquals(1, index.getObjectCount());
-		PostingList postingList = index.getPostingList(new Term("KLAS"));
-		Assert.assertEquals("jklas@fi.uba.ar", postingList.iterator().next().getValue().
-				getStoredFieldValue(Customer.class.getDeclaredField("email")));
-
-		julian = (Customer)session.get(Customer.class, julian.getId()); 
-
-		session.delete(julian);
-		session.delete(julian);
-		session.flush();
-
-		Assert.assertEquals(0, MemoryIndex.getDefaultIndex().getObjectCount());		
-		index = MemoryIndex.getIndex(new IndexId("AR"));
-		Assert.assertEquals(0, index.getObjectCount());
+		VectorQuery query = new VectorQueryParser("julian").getQuery(new IndexId("AR"));
+		Search search = new VectorSearch(query, MemoryIndexReaderFactory.getInstance());
+		
+		Collection<? extends ObjectResult> searchResults = search.search();
+		
+		HibernatePluginTemplate template = new HibernatePluginTemplate();
+		
+		Collection<?> hydratedResults = template.hydrateAll(session, searchResults);
+			
+		
+		Assert.assertEquals(1, hydratedResults.size());
+		Assert.assertEquals(julian, hydratedResults.iterator().next());
 	}
 
 	@Test
-	public void DeleteErasesInsert() {
+	public void ObjectIsHydratedByGenericTemplate() {
 		Site argentina = new Site("AR");
 		session.save(argentina);
-		Customer julian = new Customer(argentina,"Julián","Klas","jklas@fi.uba.ar","654321");
+		Customer julian = new Customer(argentina,"Julian","Klas","jklas@fi.uba.ar","654321");
 		session.save(julian);
 		session.flush();
-		
-		Assert.assertEquals(0, MemoryIndex.getDefaultIndex().getObjectCount());
-		Assert.assertEquals(1, MemoryIndex.getIndex(new IndexId("AR")).getObjectCount());
-		
-		session.delete(julian);
-		session.flush();
 
-		Assert.assertEquals(0, MemoryIndex.getDefaultIndex().getObjectCount());
-		Assert.assertEquals(0, MemoryIndex.getIndex(new IndexId("AR")).getObjectCount());
+		VectorQuery query = new VectorQueryParser("julian").getQuery(new IndexId("AR"));
+		Search search = new VectorSearch(query, MemoryIndexReaderFactory.getInstance());
+		
+		Collection<? extends ObjectResult> searchResults = search.search();
+		
+		HibernatePluginTemplate template = new HibernatePluginTemplate();
+		
+		Collection<Customer> hydratedResults = template.hydrateAll(session, searchResults, Customer.class);
+					
+		Assert.assertEquals(1, hydratedResults.size());
+		Assert.assertEquals(julian, hydratedResults.iterator().next());
 	}
-
-	@Test
-	public void InsertUpdateDeleteFlow() {
-		Site argentina = new Site("AR");
-		session.save(argentina);
-		Customer julian = new Customer(argentina,"Julián","Klas","jklas@fi.uba.ar","654321");
-		session.save(julian);
-		session.flush();
-		
-		Assert.assertEquals(0, MemoryIndex.getDefaultIndex().getObjectCount());
-		Assert.assertEquals(1, MemoryIndex.getIndex(new IndexId("AR")).getObjectCount());
-		
-		julian.setEmail("jklas@otherserver.com");
-		session.update(julian);
-		session.flush();
-		
-		Assert.assertEquals(0, MemoryIndex.getDefaultIndex().getObjectCount());
-		Assert.assertEquals(1, MemoryIndex.getIndex(new IndexId("AR")).getObjectCount());		
-		
-		session.delete(julian);
-		session.flush();
-
-		Assert.assertEquals(0, MemoryIndex.getDefaultIndex().getObjectCount());
-		Assert.assertEquals(0, MemoryIndex.getIndex(new IndexId("AR")).getObjectCount());
-	}
+	
 }
